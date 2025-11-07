@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Chat App</title>
+    <!-- טעינת Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* הוספת פונט Inter בסיסי */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* אנימציית ספינר פשוטה */
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl p-8">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">תוכנת AI מתקדמת לעדכון שלוחות במערכות ימות המשיח</h1>
+        
+        <!-- טופס הקלט -->
+        <form id="chatForm" class="space-y-6">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label for="tokenInput" class="block text-sm font-medium text-gray-700">טוקן (Token)</label>
+                    <button type="button" id="clearTokenButton" class="text-xs text-blue-500 hover:underline focus:outline-none">מחק טוקן שמור</button>
+                </div>
+                <input type="password" id="tokenInput" name="token" required
+                       class="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       placeholder="הזן את הטוקן שלך כאן">
+            </div>
+            
+            <div>
+                <label for="textInput" class="block text-sm font-medium text-gray-700 mb-2">הבקשה שלך</label>
+                <textarea id="textInput" name="text" rows="4" required
+                          class="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="כתוב את בקשתך לAI המתקדם שלנו..."></textarea>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <button type="submit" id="submitButton"
+                        class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                    שלח בקשה
+                </button>
+                <!-- מחוון טעינה (מוסתר כברירת מחדל) -->
+                <div id="loadingSpinner" class="hidden spinner w-6 h-6 border-4 border-gray-200 border-t-blue-500 rounded-full mr-4"></div>
+            </div>
+        </form>
+        
+        <!-- אזור הצגת התשובה -->
+        <div id="responseContainer" class="mt-8 pt-6 border-t border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">סטטוס:</h2>
+            <div id="responseArea"
+                 class="w-full min-h-[100px] bg-gray-50 p-4 rounded-lg border border-gray-200 text-gray-600 whitespace-pre-wrap">
+                ...סטטוס העדכון יופיע כאן...
+            </div>
+            <!-- אזור להצגת שגיאות -->
+            <div id="errorArea" class="hidden mt-4 text-red-600 font-medium p-3 bg-red-50 rounded-lg border border-red-300"></div>
+        </div>
+    </div>
+
+    <script>
+        // אלמנטים מה-DOM
+        const chatForm = document.getElementById('chatForm');
+        const tokenInput = document.getElementById('tokenInput');
+        const clearTokenButton = document.getElementById('clearTokenButton');
+        const textInput = document.getElementById('textInput');
+        const submitButton = document.getElementById('submitButton');
+        const responseArea = document.getElementById('responseArea');
+        const errorArea = document.getElementById('errorArea');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        // --- !!! חשוב !!! ---
+        // שנה את הכתובת הזו לכתובת ה-API שאליה אתה רוצה לשלוח את הבקשה
+        const YOUR_API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxSGOU5SD1yCvn7kRiF9N8rhpwT-traCP6Vyk4w6otweC36h8lyb_YEyxmNKnU60he7/exec';
+        // ---------------------
+
+        // קבוע עבור מפתח האחסון
+        const TOKEN_STORAGE_KEY = 'chatAppToken';
+
+        // מאזין לטעינת הדף - טוען טוקן שמור
+        window.addEventListener('DOMContentLoaded', () => {
+            loadToken();
+        });
+
+        // מאזין לכפתור מחיקת טוקן
+        clearTokenButton.addEventListener('click', () => {
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            tokenInput.value = ''; // ניקוי התיבה
+            showResponse('הטוקן השמור נמחק.'); // משוב למשתמש
+        });
+
+        // פונקציה לטעינת טוקן שמור
+        function loadToken() {
+            const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+            if (savedToken) {
+                tokenInput.value = savedToken;
+            }
+        }
+
+        // פונקציה לשמירת טוקן
+        function saveToken(token) {
+            localStorage.setItem(TOKEN_STORAGE_KEY, token);
+        }
+
+        // מאזין לאירוע שליחת הטופס
+        chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // מונע ריענון של הדף
+
+            const token = tokenInput.value.trim();
+            const text = textInput.value.trim();
+
+            // אימות קלט בסיסי
+            if (!token || !text) {
+                showError('נא למלא את כל השדות.');
+                return;
+            }
+
+            // שמירת הטוקן ב-localStorage
+            saveToken(token);
+
+            // עדכון ממשק המשתמש למצב טעינה
+            setLoadingState(true);
+
+            try {
+                // 1. בניית כתובת ה-URL עם הפרמטרים
+                const params = new URLSearchParams({
+                    token: token,
+                    text: text
+                });
+                
+                const url = `${YOUR_API_ENDPOINT}?${params.toString()}`;
+
+                // 2. שליחת בקשת GET באמצעות fetch
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*'
+                    }
+                });
+
+                // 3. בדיקה אם הבקשה הצליחה
+                if (!response.ok) {
+                    // זורק שגיאה אם השרת החזיר סטטוס לא תקין (כמו 404, 500)
+                    throw new Error(`שגיאת שרת: ${response.status} ${response.statusText}`);
+                }
+
+                // 4. קבלת התשובה כטקסט
+                // שנה ל-response.json() אם השרת מחזיר JSON
+                const responseData = await response.text(); 
+                
+                // 5. הצגת התשובה
+                showResponse(responseData);
+
+            } catch (error) {
+                // 6. טיפול בשגיאות (שגיאות רשת או שגיאות מהשרת)
+                console.error('אירעה שגיאה:', error);
+                showError(`אירעה שגיאה: ${error.message}. בדוק את חיבור האינטרנט או את מסוף הדפדפן.`);
+            } finally {
+                // 7. החזרת הממשק למצב רגיל (לאחר הצלחה או כישלון)
+                setLoadingState(false);
+            }
+        });
+
+        // פונקציית עזר לעדכון מצב טעינה
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'שולח...';
+                loadingSpinner.classList.remove('hidden');
+                errorArea.classList.add('hidden'); // הסתר שגיאות קודמות
+                responseArea.textContent = '...מעבד בקשה...';
+            } else {
+                submitButton.disabled = false;
+                submitButton.textContent = 'שלח שאלה';
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        // פונקציית עזר להצגת תשובה
+        function showResponse(data) {
+            responseArea.textContent = data;
+            errorArea.classList.add('hidden');
+        }
+
+        // פונקציית עזר להצגת שגיאה
+        function showError(message) {
+            errorArea.textContent = message;
+            errorArea.classList.remove('hidden');
+            responseArea.textContent = '...אירעה שגיאה...'; // נקה תשובה קודמת
+        }
+    </script>
+</body>
+</html>
