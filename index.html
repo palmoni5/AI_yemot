@@ -6,11 +6,9 @@
     <title>Simple Chat App</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* הוספת פונט Inter בסיסי */
         body {
             font-family: 'Inter', sans-serif;
         }
-        /* אנימציית ספינר פשוטה */
         .spinner {
             border-top-color: #3498db;
             animation: spin 1s linear infinite;
@@ -42,7 +40,7 @@
                         <input type="radio" id="modelPro" name="model" value="pro"
                                 class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 cursor-pointer">
                         <label for="modelPro" class="mr-2 block text-sm font-medium text-gray-700 cursor-pointer">
-                            מודל פרו (איטי, מדוייק יותר)
+                            מודל פרו (איטי, מדוייק יותר, דורש מפתח API פרטי)
                         </label>
                     </div>
                 </div>
@@ -54,16 +52,14 @@
                     <div class="flex items-center">
                         <input type="radio" id="apiPublic" name="apiType" value="public"
                                 class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 cursor-pointer">
-                        <label for="apiPublic" class="mr-2 block text-sm font-medium text-gray-700 cursor-pointer">
+                        <label for="apiPublic" id="apiPublicLabel" class="mr-2 block text-sm font-medium text-gray-700 cursor-pointer">
                             API ציבורי (ייתכנו הגבלות)
                         </label>
                     </div>
                     <div class="flex items-center">
                         <input type="radio" id="apiPrivate" name="apiType" value="private"
                                class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 cursor-pointer">
-                        <label for="apiPrivate" class="mr-2 block text-sm font-medium text-gray-700 cursor-pointer">
-                            <a href="https://aistudio.google.com/u/0/api-keys" target="_blank" class="text-blue-600 hover:underline">API פרטי</a> (מומלץ)
-                        </label>
+                        <label for="apiPrivate" class="mr-2 text-sm font-medium text-gray-700 cursor-pointer"><a href="https://aistudio.google.com/u/0/api-keys" target="_blank" class="text-blue-600 hover:underline">API פרטי</a> <span id="apiPrivateRecommended">(מומלץ)</span></label>
                     </div>
                 </div>
             </div>
@@ -110,239 +106,306 @@
     </div>
 
     <script>
-        // אלמנטים מה-DOM
-        const chatForm = document.getElementById('chatForm');
-        const tokenInput = document.getElementById('tokenInput');
-        const clearTokenButton = document.getElementById('clearTokenButton');
-        const textInput = document.getElementById('textInput');
-        const submitButton = document.getElementById('submitButton');
-        const responseArea = document.getElementById('responseArea');
-        const errorArea = document.getElementById('errorArea');
-        const loadingSpinner = document.getElementById('loadingSpinner');
+        const chatForm = document.getElementById('chatForm');
+        const tokenInput = document.getElementById('tokenInput');
+        const clearTokenButton = document.getElementById('clearTokenButton');
+        const textInput = document.getElementById('textInput');
+        const submitButton = document.getElementById('submitButton');
+        const responseArea = document.getElementById('responseArea');
+        const errorArea = document.getElementById('errorArea');
+        const loadingSpinner = document.getElementById('loadingSpinner');
 
-        // --- הוספת אלמנטים חדשים ---
-        const modelRegularRadio = document.getElementById('modelRegular');
-        const modelProRadio = document.getElementById('modelPro');
-        const apiPublicRadio = document.getElementById('apiPublic');
-        const apiPrivateRadio = document.getElementById('apiPrivate');
-        const apiKeyContainer = document.getElementById('apiKeyContainer');
-        const apiKeyInput = document.getElementById('apiKeyInput');
-        // --- סוף הוספה ---
+        // --- אלמנטים חדשים ---
+        const modelRegularRadio = document.getElementById('modelRegular');
+        const modelProRadio = document.getElementById('modelPro');
+        const apiPublicRadio = document.getElementById('apiPublic');
+        const apiPrivateRadio = document.getElementById('apiPrivate');
+        const apiKeyContainer = document.getElementById('apiKeyContainer');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const apiPublicLabel = document.getElementById('apiPublicLabel');
+        const apiPrivateRecommendedText = document.getElementById('apiPrivateRecommended');
+        const YOUR_API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxSGOU5SD1yCvn7kRiF9N8rhpwT-traCP6Vyk4w6otweC36h8lyb_YEyxmNKnU60he7/exec';
 
-        // --- !!! חשוב !!! ---
-        // שנה את הכתובת הזו לכתובת ה-API שאליה אתה רוצה לשלוח את הבקשה
-        const YOUR_API_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxSGOU5SD1yCvn7kRiF9N8rhpwT-traCP6Vyk4w6otweC36h8lyb_YEyxmNKnU60he7/exec';
-        // ---------------------
+        const TOKEN_STORAGE_KEY = 'chatAppToken';
+        const MODEL_STORAGE_KEY = 'chatAppModel';
+        const API_TYPE_STORAGE_KEY = 'chatAppApiType';
+        const API_KEY_STORAGE_KEY = 'chatAppApiKey';
 
-        // קבועים עבור מפתחות האחסון
-        const TOKEN_STORAGE_KEY = 'chatAppToken';
-        // --- הוספת מפתחות חדשים ---
-        const MODEL_STORAGE_KEY = 'chatAppModel';
-        const API_TYPE_STORAGE_KEY = 'chatAppApiType';
-        const API_KEY_STORAGE_KEY = 'chatAppApiKey';
-        // --- סוף הוספה ---
+        let lastUserApiType = 'public'; 
 
-        // מאזין לטעינת הדף - טוען הגדרות שמורות
-        window.addEventListener('DOMContentLoaded', () => {
-            loadToken(); // טעינת טוקן
-            loadSettings(); // טעינת שאר ההגדרות
-        });
+        window.addEventListener('DOMContentLoaded', () => {
+            loadToken();
+            loadSettings();
+        });
 
-        // מאזין לכפתור מחיקת טוקן
-        clearTokenButton.addEventListener('click', () => {
-            localStorage.removeItem(TOKEN_STORAGE_KEY);
-            tokenInput.value = ''; // ניקוי התיבה
-            showResponse('הטוקן השמור נמחק.'); // משוב למשתמש
-        });
+        // מאזין לכפתור מחיקת טוקן
+        clearTokenButton.addEventListener('click', () => {
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            tokenInput.value = ''; // ניקוי התיבה
+            showResponse('הטוקן השמור נמחק.'); // משוב למשתמש
+        });
 
-        // --- הוספת מאזינים לשינויים ---
-        // מאזינים לשינוי בבחירת סוג ה-API
-        apiPublicRadio.addEventListener('change', handleApiTypeChange);
-        apiPrivateRadio.addEventListener('change', handleApiTypeChange);
-        
-        // מאזינים לשמירת הגדרות אוטומטית
-        modelRegularRadio.addEventListener('change', saveSettings);
-        modelProRadio.addEventListener('change', saveSettings);
-        apiKeyInput.addEventListener('input', saveSettings); // שמירה בזמן הקלדה
-        // --- סוף הוספה ---
+        // --- הוספת מאזינים לשינויים ---
+        // מאזינים לשינוי בבחירת סוג ה-API
+        apiPublicRadio.addEventListener('change', handleApiTypeChange);
+        apiPrivateRadio.addEventListener('change', handleApiTypeChange);
+        
+        // --- הוספת מאזינים לשינוי מודל ---
+        modelRegularRadio.addEventListener('change', handleModelChange);
+        modelProRadio.addEventListener('change', handleModelChange);
+        // --- סוף הוספה ---
 
-        // פונקציה לטעינת טוקן שמור
-        function loadToken() {
-            const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-            if (savedToken) {
-                tokenInput.value = savedToken;
-            }
-        }
+        // מאזין לשמירת מפתח API אוטומטית
+        apiKeyInput.addEventListener('input', saveSettings); // שמירה בזמן הקלדה
+        // --- סוף הוספה ---
 
-        // פונקציה לשמירת טוקן
-        function saveToken(token) {
-            localStorage.setItem(TOKEN_STORAGE_KEY, token);
-        }
+        // פונקציה לטעינת טוקן שמור
+        function loadToken() {
+            const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+            if (savedToken) {
+                tokenInput.value = savedToken;
+            }
+        }
 
-        // --- הוספת פונקציות חדשות ---
+        // פונקציה לשמירת טוקן
+        function saveToken(token) {
+            localStorage.setItem(TOKEN_STORAGE_KEY, token);
+        }
 
-        // פונקציה לטעינת הגדרות שמורות (מודל, סוג API, מפתח API)
-        function loadSettings() {
-            // טעינת מודל שמור
-            const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'regular';
-            const modelRadio = document.querySelector(`input[name="model"][value="${savedModel}"]`);
-            if (modelRadio) {
-                modelRadio.checked = true;
-            }
+        // --- פונקציות חדשות ופונקציות שעודכנו ---
 
-            // טעינת סוג API שמור
-            const savedApiType = localStorage.getItem(API_TYPE_STORAGE_KEY) || 'public';
-            const apiTypeRadio = document.querySelector(`input[name="apiType"][value="${savedApiType}"]`);
-            if (apiTypeRadio) {
-                apiTypeRadio.checked = true;
-            }
+        // פונקציה לטעינת הגדרות שמורות (מודל, סוג API, מפתח API)
+        function loadSettings() {
+            // טעינת מודל שמור
+            const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'regular';
+            const modelRadio = document.querySelector(`input[name="model"][value="${savedModel}"]`);
+            if (modelRadio) {
+                modelRadio.checked = true;
+            }
 
-            // טעינת מפתח API שמור
-            apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+            // טעינת סוג API שמור
+            const savedApiType = localStorage.getItem(API_TYPE_STORAGE_KEY) || 'public';
+            const apiTypeRadio = document.querySelector(`input[name="apiType"][value="${savedApiType}"]`);
+            if (apiTypeRadio) {
+                apiTypeRadio.checked = true;
+            }
 
-            // עדכון תצוגת שדה המפתח בהתאם לטעינה
-            toggleApiKeyInput(savedApiType === 'private');
-        }
+            // --- עדכון ---
+            // אתחול משתנה הזיכרון מהערך השמור
+            lastUserApiType = savedApiType;
+            // --- סוף עדכון ---
 
-        // פונקציה לשמירת הגדרות (מודל, סוג API, מפתח API)
-        function saveSettings() {
-            const selectedModel = document.querySelector('input[name="model"]:checked').value;
-            const selectedApiType = document.querySelector('input[name="apiType"]:checked').value;
-            const apiKey = apiKeyInput.value; // שמירת המפתח כפי שהוא
+            // טעינת מפתח API שמור
+            apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE_KEY) || '';
 
-            localStorage.setItem(MODEL_STORAGE_KEY, selectedModel);
-            localStorage.setItem(API_TYPE_STORAGE_KEY, selectedApiType);
-            localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
-        }
+            // --- עדכון ---
+            // עדכון תצוגת שדה המפתח (יטפל גם במקרה של 'פרו')
+            updateApiStateBasedOnModel();
+            // --- סוף עדכון ---
+        }
 
-        // פונקציה המטפלת בשינוי סוג ה-API
-        function handleApiTypeChange() {
-            const isPrivate = apiPrivateRadio.checked;
-            toggleApiKeyInput(isPrivate);
-            saveSettings(); // שמירת הבחירה מיד
-        }
+        // פונקציה לשמירת הגדרות (מודל, סוג API, מפתח API)
+        function saveSettings() {
+            const selectedModel = document.querySelector('input[name="model"]:checked').value;
+            const selectedApiType = document.querySelector('input[name="apiType"]:checked').value;
+            const apiKey = apiKeyInput.value; 
 
-        // פונקציית עזר להצגה/הסתרת שדה המפתח
-        function toggleApiKeyInput(show) {
-            if (show) {
-                apiKeyContainer.classList.remove('hidden');
-            } else {
-                apiKeyContainer.classList.add('hidden');
-            }
-        }
-        // --- סוף הוספת פונקציות ---
+            localStorage.setItem(MODEL_STORAGE_KEY, selectedModel);
+            localStorage.setItem(API_TYPE_STORAGE_KEY, selectedApiType);
+            localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+        }
 
-        // מאזין לאירוע שליחת הטופס
-        chatForm.addEventListener('submit', async (event) => {
-            event.preventDefault(); // מונע ריענון של הדף
+        // פונקציה המטפלת בשינוי סוג ה-API (עדכון)
+        function handleApiTypeChange() {
+            const isPrivate = apiPrivateRadio.checked;
+            toggleApiKeyInput(isPrivate);
 
-            // קבלת כל הערכים מהטופס
-            const token = tokenInput.value.trim();
-            const text = textInput.value.trim();
-            const selectedModel = chatForm.querySelector('input[name="model"]:checked').value;
-            
-            // --- קבלת ערכים חדשים ---
-            const selectedApiType = chatForm.querySelector('input[name="apiType"]:checked').value;
-            const apiKey = apiKeyInput.value; // קבלת המפתח
-            // --- סוף קבלת ערכים ---
+            // --- עדכון ---
+            // שמור את בחירת המשתמש רק אם הוא לא במודל "פרו" (שם הבחירה נכפית)
+            if (!modelProRadio.checked) {
+                lastUserApiType = document.querySelector('input[name="apiType"]:checked').value;
+            }
+            // --- סוף עדכון ---
 
-            // אימות קלט בסיסי
-            if (!token || !text) {
-                showError('נא למלא את שדה הטוקן ושדה הבקשה.');
-                return;
-            }
+            saveSettings(); // שמירת הבחירה מיד
+        }
 
-            // --- אימות מפתח פרטי ---
-            if (selectedApiType === 'private' && !apiKey.trim()) {
-                showError('נא למלא מפתח API פרטי.');
-                return;
-            }
-            // --- סוף אימות ---
+        // --- פונקציה חדשה ---
+        // פונקציה המטפלת בשינוי בחירת המודל
+        function handleModelChange() {
+            // אם המשתמש *בדיוק עכשיו* בחר "פרו",
+            // שמור את בחירת ה-API *הנוכחית* שלו בזיכרון לפני שנדרוס אותה.
+            if (modelProRadio.checked) {
+             lastUserApiType = document.querySelector('input[name="apiType"]:checked').value;
+            }
 
-            // שמירת הטוקן וההגדרות ב-localStorage
-            saveToken(token);
-            saveSettings(); // שמירת כל ההגדרות בעת שליחה
+            // עדכן את מצב כפתורי ה-API בהתאם לבחירת המודל
+            updateApiStateBasedOnModel();
 
-            // עדכון ממשק המשתמש למצב טעינה
-            setLoadingState(true);
+            // שמור את המצב החדש (גם את בחירת המודל וגם את בחירת ה-API)
+            saveSettings();
+        }
 
-            try {
-                // 1. בניית כתובת ה-URL עם הפרמטרים
-                const params = new URLSearchParams({
-                    token: token,
-                    text: text
-                });
-                
-                // הוספת הפרמטר model=pro רק אם נבחר מודל פרו
-                if (selectedModel === 'pro') {
-                    params.append('model', 'pro');
-                }
+        // --- פונקציה חדשה (מעודכנת) ---
+        // פונקציית עזר שמעדכנת את ממשק ה-API בהתאם למודל שנבחר
+        function updateApiStateBasedOnModel() {
+            if (modelProRadio.checked) {
+                // אם "פרו" נבחר:
+                // 1. השבת את ה-API הציבורי
+                apiPublicRadio.disabled = true;
+                // 2. בחר אוטומטית ב-API הפרטי
+                apiPrivateRadio.checked = true;
+                // 3. הצג את שדה המפתח
+                toggleApiKeyInput(true);
+                
+                // --- 4. עדכון: שנה את הטקסט ל"דרוש" ---
+                apiPrivateRecommendedText.textContent = '(דרוש)';
 
-                // --- הוספת מפתח API אם נבחר פרטי ---
-                if (selectedApiType === 'private') {
-                    params.append('key', apiKey);
-                }
-                // --- סוף הוספה ---
-                
-                const url = `${YOUR_API_ENDPOINT}?${params.toString()}`;
+                // 5. הפוך את הטקסט הציבורי לאפור
+                apiPublicLabel.classList.remove('text-gray-700');
+                apiPublicLabel.classList.add('text-gray-400'); // צבע אפור בהיר
 
-                // 2. שליחת בקשת GET באמצעות fetch
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json, text/plain, */*'
-                    }
-                });
+            } else {
+                // אם "רגיל" נבחר:
+                // 1. אפשר בחירה ב-API הציבורי
+                apiPublicRadio.disabled = false;
+                
+                // --- 2. עדכון: החזר את הטקסט ל"מומלץ" ---
+                apiPrivateRecommendedText.textContent = '(מומלץ)';
 
-                // 3. בדיקה אם הבקשה הצליחה
-                if (!response.ok) {
-                    // זורק שגיאה אם השרת החזיר סטטוס לא תקין (כמו 404, 500)
-                    throw new Error(`שגיאת שרת: ${response.status} ${response.statusText}`);
-                }
+                // 3. החזר את הטקסט הציבורי לצבע רגיל
+                apiPublicLabel.classList.add('text-gray-700');
+                apiPublicLabel.classList.remove('text-gray-400');
 
-                // 4. קבלת התשובה כטקסט
-                const responseData = await response.text(); 
-                
-                // 5. הצגת התשובה
-                showResponse(responseData);
+                // 4. שחזר את הבחירה האחרונה של המשתמש
+                if (lastUserApiType === 'public') {
+                    apiPublicRadio.checked = true;
+                    toggleApiKeyInput(false); // והסתר שדה
+                } else {
+                    apiPrivateRadio.checked = true;
+                    toggleApiKeyInput(true); // והצג שדה
+                }
+            }
+        }
 
-            } catch (error) {
-                // 6. טיפול בשגיאות (שגיאות רשת או שגיאות מהשרת)
-                console.error('אירעה שגיאה:', error);
-                showError(`אירעה שגיאה: ${error.message}. בדוק את חיבור האינטרנט או את מסוף הדפדפן.`);
-            } finally {
-                // 7. החזרת הממשק למצב רגיל (לאחר הצלחה או כישלון)
-                setLoadingState(false);
-            }
-        });
+        // פונקציית עזר להצגה/הסתרת שדה המפתח
+        function toggleApiKeyInput(show) {
+            if (show) {
+                apiKeyContainer.classList.remove('hidden');
+            } else {
+                apiKeyContainer.classList.add('hidden');
+            }
+        }
+        // --- סוף הוספת פונקציות ---
 
-        // פונקציית עזר לעדכון מצב טעינה
-        function setLoadingState(isLoading) {
-            if (isLoading) {
-                submitButton.disabled = true;
-                submitButton.textContent = 'שולח...';
-                loadingSpinner.classList.remove('hidden');
-                errorArea.classList.add('hidden'); // הסתר שגיאות קודמות
-                responseArea.textContent = '...מעבד בקשה...';
-            } else {
-                submitButton.disabled = false;
-                submitButton.textContent = 'שלח בקשה';
-                loadingSpinner.classList.add('hidden');
-            }
-        }
+        // מאזין לאירוע שליחת הטופס
+        chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // מונע ריענון של הדף
 
-        // פונקציית עזר להצגת תשובה
-        function showResponse(data) {
-            responseArea.textContent = data;
-            errorArea.classList.add('hidden');
-        }
+            // קבלת כל הערכים מהטופס
+            const token = tokenInput.value.trim();
+            const text = textInput.value.trim();
+            const selectedModel = chatForm.querySelector('input[name="model"]:checked').value;
+            const selectedApiType = chatForm.querySelector('input[name="apiType"]:checked').value;
+            const apiKey = apiKeyInput.value.trim(); // Trim API key
+            // --- סוף קבלת ערכים ---
 
-        // פונקציית עזר להצגת שגיאה
-        function showError(message) {
-            errorArea.textContent = message;
-            errorArea.classList.remove('hidden');
-            responseArea.textContent = '...אירעה שגיאה...'; // נקה תשובה קודמת
-        }
-    </script>
+            // אימות קלט בסיסי
+            if (!token || !text) {
+                showError('נא למלא את שדה הטוקן ושדה הבקשה.');
+                return;
+            }
+
+            // --- אימות מפתח פרטי ---
+            if (selectedApiType === 'private' && !apiKey) {
+                showError('נא למלא מפתח API פרטי.');
+                return;
+            }
+            // --- סוף אימות ---
+
+            // שמירת הטוקן וההגדרות ב-localStorage
+            saveToken(token);
+            saveSettings(); // שמירת כל ההגדרות בעת שליחה
+
+            // עדכון ממשק המשתמש למצב טעינה
+            setLoadingState(true);
+
+            try {
+                // 1. בניית כתובת ה-URL עם הפרמטרים
+                const params = new URLSearchParams({
+                    token: token,
+                    text: text
+                });
+                
+                // הוספת הפרמטר model=pro רק אם נבחר מודל פרו
+                if (selectedModel === 'pro') {
+                    params.append('model', 'pro');
+                }
+
+                if (selectedApiType === 'private') {
+                    params.append('key', apiKey);
+                }
+                // --- סוף הוספה ---
+                
+                const url = `${YOUR_API_ENDPOINT}?${params.toString()}`;
+
+                // 2. שליחת בקשת GET באמצעות fetch
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*'
+                    }
+                });
+
+                // 3. בדיקה אם הבקשה הצליחה
+                if (!response.ok) {
+                    // זורק שגיאה אם השרת החזיר סטטוס לא תקין (כמו 404, 500)
+                    throw new Error(`שגיאת שרת: ${response.status} ${response.statusText}`);
+                }
+
+                // 4. קבלת התשובה כטקסט
+                const responseData = await response.text(); 
+                
+                // 5. הצגת התשובה
+                showResponse(responseData);
+
+            } catch (error) {
+                // 6. טיפול בשגיאות (שגיאות רשת או שגיאות מהשרת)
+                console.error('אירעה שגיאה:', error);
+                showError(`אירעה שגיאה: ${error.message}. בדוק את חיבור האינטרנט או את מסוף הדפדפן.`);
+            } finally {
+                // 7. החזרת הממשק למצב רגיל (לאחר הצלחה או כישלון)
+                setLoadingState(false);
+            }
+        });
+
+        // פונקציית עזר לעדכון מצב טעינה
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'שולח...';
+                loadingSpinner.classList.remove('hidden');
+                errorArea.classList.add('hidden'); // הסתר שגיאות קודמות
+                responseArea.textContent = '...מעבד בקשה...';
+            } else {
+                submitButton.disabled = false;
+                submitButton.textContent = 'שלח בקשה';
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        // פונקציית עזר להצגת תשובה
+        function showResponse(data) {
+            responseArea.textContent = data;
+            errorArea.classList.add('hidden');
+        }
+
+        // פונקציית עזר להצגת שגיאה
+        function showError(message) {
+            errorArea.textContent = message;
+            errorArea.classList.remove('hidden');
+            responseArea.textContent = '...אירעה שגיאה...'; // נקה תשובה קודמת
+        }
+    </script>
 </body>
 </html>
