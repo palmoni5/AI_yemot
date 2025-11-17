@@ -167,7 +167,7 @@
                                 <input type="checkbox" id="logoutAfterSubmit" name="logout" checked
                                        class="focus:ring-red-500 h-4 w-4 text-red-600 border-gray-300 rounded cursor-pointer">
                                 <label for="logoutAfterSubmit" class="mr-2 block text-sm font-medium text-gray-700 cursor-pointer">
-                                    ניתוק הטוקן אחר שליחה (הניתוק לא יתבצע אם תבחרו הצגת פעולות לאישור ידני)
+                                    ניתוק הטוקן אחר שליחה
                                 </label>
                             </div>
                         </div>
@@ -237,8 +237,8 @@
         const textInput = document.getElementById('textInput');
         const submitButton = document.getElementById('submitButton');
         const responseArea = document.getElementById('responseArea');
-        const actionsListArea = document.getElementById('actionsListArea'); // אלמנט חדש לרשימת פעולות
-        const previewModeCheckbox = document.getElementById('previewModeCheckbox'); // אלמנט חדש לצ'קבוקס
+        const actionsListArea = document.getElementById('actionsListArea');
+        const previewModeCheckbox = document.getElementById('previewModeCheckbox');
         const errorArea = document.getElementById('errorArea');
         const loadingSpinner = document.getElementById('loadingSpinner');
         const modelRegularRadio = document.getElementById('modelRegular');
@@ -254,6 +254,7 @@
         const MODEL_STORAGE_KEY = 'chatAppModel';
         const API_TYPE_STORAGE_KEY = 'chatAppApiType';
         const API_KEY_STORAGE_KEY = 'chatAppApiKey';
+        const PREVIEW_MODE_STORAGE_KEY = 'chatAppPreviewMode';
 
         let lastUserApiType = 'public';
         let currentToken = null;
@@ -291,6 +292,7 @@
             mfaMethodsSelect.addEventListener('change', updateSendTypes);
             sendCodeButton.addEventListener('click', handleSendCode);
             validateCodeButton.addEventListener('click', handleValidateCode);
+            previewModeCheckbox.addEventListener('change', saveSettings); // הוספת מאזין לשינוי צ'קבוקס
         });
         
         function openMfaModal() {
@@ -356,6 +358,15 @@
 
             lastUserApiType = savedApiType;
             apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+            
+            // טעינת הגדרת Preview Mode
+            const savedPreviewMode = localStorage.getItem(PREVIEW_MODE_STORAGE_KEY);
+            if (savedPreviewMode === 'true') {
+                previewModeCheckbox.checked = true;
+            } else {
+                previewModeCheckbox.checked = false; 
+            }
+
             updateApiStateBasedOnModel();
         }
 
@@ -367,6 +378,7 @@
             localStorage.setItem(MODEL_STORAGE_KEY, selectedModel);
             localStorage.setItem(API_TYPE_STORAGE_KEY, selectedApiType);
             localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+            localStorage.setItem(PREVIEW_MODE_STORAGE_KEY, previewModeCheckbox.checked); // שמירת מצב הצ'קבוקס
         }
 
         function handleApiTypeChange() {
@@ -521,6 +533,26 @@
             actionsListArea.classList.add('hidden');
         }
         function renderActionList(rawData) {
+            // בדיקה מקדימה האם יש בכלל פעולות רלוונטיות
+            const hasApiActions = rawData.includes('https://www.call2all.co.il/ym/api/');
+            const needsLogout = logoutAfterSubmitCheckbox && logoutAfterSubmitCheckbox.checked;
+            
+            // אם אין פעולות API וגם לא ביקשו ניתוק - מציגים כטקסט רגיל
+            if (!hasApiActions && !needsLogout) {
+                showResponse(rawData);
+                return;
+            }
+
+            // אם אין פעולות API אבל כן ביקשו ניתוק - גם אז כדאי להציג כטקסט רגיל
+            // אלא אם כן רוצים שזה יופיע בממשק הפעולות.
+            // הבקשה הייתה: "כעת הקוד מוסיף את הקישור לניתוק בכל אופן... זה לא אמור להיות ככה".
+            // כלומר, ניתוק צריך להופיע *רק* אם המודל החזיר פעולות אחרות.
+            if (!hasApiActions) {
+                 showResponse(rawData);
+                 return;
+            }
+
+            // אם הגענו לפה, סימן שיש פעולות API מהמודל. בונים את הממשק.
             responseArea.classList.add('hidden');
             actionsListArea.classList.remove('hidden');
             actionsListArea.innerHTML = '';
@@ -586,18 +618,18 @@
                 }
             });
 
+            // הוספת ניתוק טוקן אך ורק אם נמצאו פעולות נוספות (כפי שסונן למעלה)
+            if (needsLogout) {
+                createActionItem('ניתוק טוקן', 'https://www.call2all.co.il/ym/api/Logout');
+                actionsFound++; // כדי לוודא שכפתור "בצע הכל" יופיע
+            }
+
             if (actionsFound > 0) {
                 executeAllBtn.style.display = 'block';
-            } else {
-                 const emptyDiv = document.createElement('div');
-                 emptyDiv.className = 'p-6 text-center text-gray-500';
-                 emptyDiv.textContent = 'לא נמצאו פעולות לביצוע בתשובה שהתקבלה (או שהתשובה היא טקסט חופשי).';
-                 actionsListArea.appendChild(emptyDiv);
-                 
-                 const originalTextDiv = document.createElement('div');
-                 originalTextDiv.className = 'p-4 text-sm text-gray-600 whitespace-pre-wrap border-t';
-                 originalTextDiv.textContent = rawData;
-                 actionsListArea.appendChild(originalTextDiv);
+            } 
+            // במצב הזה, ה-else לא אמור לקרות בגלל הסינון בהתחלה, אבל ליתר ביטחון:
+            else {
+                 showResponse(rawData);
             }
         }
 
@@ -632,12 +664,13 @@
                 button.classList.replace('bg-green-600', 'bg-gray-400');
                 
                 const token = tokenInput.value.trim();
-                // הוספת הטוקן ל-URL
-                const fullUrl = url + "&token=" + encodeURIComponent(token);
+                
+                const separator = url.includes('?') ? '&' : '?';
+                const fullUrl = url + separator + "token=" + encodeURIComponent(token);
                 
                 try {
                     const response = await fetch(fullUrl);
-                    const data = await response.json();
+                    const data = await response.json(); 
                     
                     if (data.responseStatus === 'OK') {
                         button.classList.add('hidden');
